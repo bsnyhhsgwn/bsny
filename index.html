@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<link rel="manifest" href="manifest.json">
+<title>🇧🇦 波斯尼亚语词库</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f4f6;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:720px;margin:auto;padding:18px 15px 42px}h1{text-align:center;font-size:26px;margin:8px 0 18px}
+.card{background:white;border-radius:20px;padding:18px;margin:12px 0;box-shadow:0 3px 16px #0001}
+.tabs,.choices,.actions{display:grid;gap:9px}.tabs{grid-template-columns:repeat(3,1fr)}.choices{grid-template-columns:1fr 1fr}.actions{grid-template-columns:1fr 1fr 1fr}
+button{border:0;border-radius:13px;padding:13px 10px;font-size:15px;background:#e5e7eb;color:#111827}button.primary{background:#111827;color:#fff}
+.question{min-height:130px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:36px;font-weight:750;padding:20px 5px}
+.answer{text-align:center;font-size:19px;line-height:1.8;padding:10px 0 16px}.muted{color:#6b7280;font-size:13px;text-align:center}
+input,textarea{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:12px;font-size:16px;margin:5px 0 9px}
+.hidden{display:none}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:9px 5px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
+.badge{display:inline-block;padding:3px 7px;border-radius:9px;background:#eef2ff;font-size:12px}
+</style>
+</head>
+<body>
+<main>
+<h1>🇧🇦 波斯尼亚语词库</h1>
+
+<div class="card">
+  <div class="tabs">
+    <button onclick="showPage('random')">随机抽取</button>
+    <button onclick="showPage('list')">全部列表</button>
+    <button onclick="showPage('import')">入库</button>
+  </div>
+</div>
+
+<section id="random" class="card">
+  <h3>随机抽取</h3>
+  <div class="choices">
+    <button id="modeBS" class="primary" onclick="setMode('bs')">波斯尼亚语 → 中文</button>
+    <button id="modeZH" onclick="setMode('zh')">中文 → 波斯尼亚语</button>
+  </div>
+  <div class="question" id="question"></div>
+  <div id="answer" class="answer hidden"></div>
+  <div class="actions">
+    <button class="primary" onclick="reveal()">显示答案</button>
+    <button onclick="rate('known')">记住了</button>
+    <button onclick="next()">换一个</button>
+  </div>
+  <div class="actions" style="margin-top:9px">
+    <button onclick="rate('maybe')">有印象</button>
+    <button onclick="rate('forgot')">忘记了</button>
+    <button onclick="resetStats()">重置记录</button>
+  </div>
+  <p class="muted" id="stats"></p>
+</section>
+
+<section id="list" class="card hidden">
+  <h3>全部列表</h3>
+  <input id="search" placeholder="搜索中文 / 波斯尼亚语 / 谐音" oninput="renderList()">
+  <div id="table"></div>
+</section>
+
+<section id="import" class="card hidden">
+  <h3>入库</h3>
+  <p class="muted" style="text-align:left">CSV格式：第一列中文，第二列波斯尼亚语，第三列中文谐音。第一行可以写表头。</p>
+  <textarea id="paste" rows="6" placeholder="中文,波斯尼亚语,中文谐音&#10;坏的/不好的,loše,洛舍&#10;剃须刀,brijač,布里亚奇"></textarea>
+  <button class="primary" onclick="importText()">粘贴内容入库</button>
+  <br><br>
+  <input type="file" id="file" accept=".csv,.txt">
+  <button onclick="importFile()">导入CSV</button>
+  <button onclick="exportCSV()">导出整个词库</button>
+  <p class="muted">词库保存在本机浏览器中。建议定期导出备份。</p>
+</section>
+</main>
+
+<script>
+const KEY="bosnian_vocab_v1";
+let words=JSON.parse(localStorage.getItem(KEY)||"null")||[
+{zh:"坏的/不好的",bs:"loše",py:"洛舍",known:0,maybe:0,forgot:0},
+{zh:"非常/真/特别",bs:"baš",py:"巴什",known:0,maybe:0,forgot:0},
+{zh:"非常多",bs:"baš puno",py:"巴什 普诺",known:0,maybe:0,forgot:0},
+{zh:"剃须刀",bs:"brijač",py:"布里亚奇",known:0,maybe:0,forgot:0},
+{zh:"烟灰缸",bs:"pepeljara",py:"佩佩利亚拉",known:0,maybe:0,forgot:0},
+{zh:"灰/烟灰",bs:"pepeo",py:"佩佩奥",known:0,maybe:0,forgot:0},
+{zh:"胸针",bs:"broš",py:"布罗什",known:0,maybe:0,forgot:0},
+{zh:"望远镜",bs:"dvogled",py:"德沃格莱德",known:0,maybe:0,forgot:0},
+{zh:"辫子",bs:"pletenica",py:"普莱特尼察",known:0,maybe:0,forgot:0},
+{zh:"球拍",bs:"reket",py:"雷克特",known:0,maybe:0,forgot:0},
+{zh:"夹子",bs:"štapaljke",py:"什塔帕利克",known:0,maybe:0,forgot:0},
+{zh:"毛绒的",bs:"plišana",py:"普利沙娜",known:0,maybe:0,forgot:0}
+];
+let mode="bs",current=null;
+function save(){localStorage.setItem(KEY,JSON.stringify(words))}
+function showPage(id){["random","list","import"].forEach(x=>document.getElementById(x).classList.toggle("hidden",x!==id));if(id==="list")renderList()}
+function setMode(m){mode=m;document.getElementById("modeBS").classList.toggle("primary",m==="bs");document.getElementById("modeZH").classList.toggle("primary",m==="zh");next()}
+function weightedPick(){
+ if(!words.length)return null;
+ let pool=[];
+ words.forEach((w,i)=>{let weight=1+(w.forgot||0)*3+(w.maybe||0);for(let n=0;n<weight;n++)pool.push(i)});
+ return words[pool[Math.floor(Math.random()*pool.length)]];
+}
+function next(){current=weightedPick();if(!current)return;document.getElementById("question").textContent=mode==="bs"?current.bs:current.zh;document.getElementById("answer").classList.add("hidden");document.getElementById("answer").innerHTML="";updateStats()}
+function reveal(){if(!current)return;document.getElementById("answer").innerHTML=mode==="bs"?`中文：${esc(current.zh)}<br>谐音：${esc(current.py||"未填写")}`:`波斯尼亚语：${esc(current.bs)}<br>谐音：${esc(current.py||"未填写")}`;document.getElementById("answer").classList.remove("hidden")}
+function rate(type){if(!current)return;current[type]=(current[type]||0)+1;save();next()}
+function updateStats(){if(!current)return;document.getElementById("stats").textContent=`词库 ${words.length} 个词 · 当前词：记住 ${current.known||0} / 有印象 ${current.maybe||0} / 忘记 ${current.forgot||0}`}
+function resetStats(){words.forEach(w=>{w.known=w.maybe=w.forgot=0});save();updateStats()}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function renderList(){
+ let q=(document.getElementById("search").value||"").toLowerCase();
+ let arr=words.filter(w=>(w.zh+w.bs+(w.py||"")).toLowerCase().includes(q));
+ document.getElementById("table").innerHTML="<table><tr><th>中文</th><th>波斯尼亚语</th><th>谐音</th><th>记录</th></tr>"+arr.map(w=>`<tr><td>${esc(w.zh)}</td><td>${esc(w.bs)}</td><td>${esc(w.py||"")}</td><td><span class="badge">记${w.known||0}</span> <span class="badge">忘${w.forgot||0}</span></td></tr>`).join("")+"</table>";
+}
+function parseCSV(text){
+ let lines=text.replace(/^\uFEFF/,"").split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+ if(lines.length&&/^(中文|chinese)/i.test(lines[0]))lines.shift();
+ return lines.map(line=>{
+   let p=[],cur="",quote=false;
+   for(let i=0;i<line.length;i++){let c=line[i];if(c==='"'){if(quote&&line[i+1]==='"'){cur+='"';i++}else quote=!quote}else if(c===","&&!quote){p.push(cur);cur=""}else cur+=c}p.push(cur);
+   return {zh:(p[0]||"").trim(),bs:(p[1]||"").trim(),py:(p[2]||"").trim(),known:0,maybe:0,forgot:0};
+ }).filter(x=>x.zh&&x.bs)
+}
+function add(arr){words.push(...arr);save();renderList();next();alert("已导入 "+arr.length+" 个词")}
+function importText(){add(parseCSV(document.getElementById("paste").value))}
+function importFile(){let f=document.getElementById("file").files[0];if(!f)return alert("请选择CSV文件");let r=new FileReader();r.onload=()=>add(parseCSV(r.result));r.readAsText(f)}
+function exportCSV(){let t="中文,波斯尼亚语,中文谐音\n"+words.map(w=>[w.zh,w.bs,w.py||""].map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");let a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\ufeff"+t],{type:"text/csv;charset=utf-8"}));a.download="bosnian词库.csv";a.click()}
+save();next();
+</script>
+</body>
+</html>
