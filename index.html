@@ -51,14 +51,17 @@ input,textarea{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:12
   <div class="question" id="question"></div>
   <div id="answer" class="answer hidden"></div>
   <div class="actions">
+    <button onclick="prev()">← 上一个</button>
     <button class="primary" onclick="reveal()">显示答案</button>
-    <button onclick="rate('known')">记住了</button>
-    <button onclick="next()">换一个</button>
+    <button onclick="next()">下一个 →</button>
   </div>
-  <div class="actions" style="margin-top:9px">
+  <div id="ratingActions" class="actions hidden" style="margin-top:9px">
+    <button onclick="rate('known')">记住了</button>
     <button onclick="rate('maybe')">有印象</button>
     <button onclick="rate('forgot')">忘记了</button>
-    <button onclick="resetStats()">重置记录</button>
+  </div>
+  <div style="margin-top:9px">
+    <button onclick="resetStats()" style="width:100%">重置记录</button>
   </div>
   <p class="muted" id="stats"></p>
 </section>
@@ -76,6 +79,12 @@ input,textarea{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:12
     <button onclick="resetStats();renderList()">重置全部记录</button>
   </div>
   <input id="search" placeholder="搜索中文 / 波斯尼亚语 / 谐音" oninput="renderList()">
+  <div class="actions" style="margin-top:9px">
+    <button onclick="deleteByFilter()">删除当前分类</button>
+    <button onclick="deleteAll()">一键删除全部</button>
+    <button onclick="deleteSearch()">删除搜索结果</button>
+  </div>
+  <p class="muted">删除当前分类：全部 / 有印象 / 忘记 / 记住。删除后无法恢复，请先导出备份。</p>
   <div id="table"></div>
 </section>
 
@@ -117,6 +126,7 @@ let words=JSON.parse(localStorage.getItem(KEY)||"null")||[
 ];
 words=words.map(w=>({...w,known:w.known||0,maybe:w.maybe||0,forgot:w.forgot||0}));
 let mode="bs",current=null,pickMode="weighted",pickFilter="all",listFilter="all",sessionSeen=new Set();
+let history=[], historyPos=-1, answerShown=false;
 let todayCurrent=null,todayState=JSON.parse(localStorage.getItem("bosnian_today_v1")||"null");
 const todayKey=()=>new Date().toLocaleDateString("zh-CN",{timeZone:"Europe/Sarajevo"});
 function saveToday(){localStorage.setItem("bosnian_today_v1",JSON.stringify(todayState))}
@@ -146,9 +156,9 @@ function updateTodayStats(){let total=todayState?.ids?.length||0,done=todayState
 
 function save(){localStorage.setItem(KEY,JSON.stringify(words))}
 function showPage(id){["random","list","import","today"].forEach(x=>document.getElementById(x).classList.toggle("hidden",x!==id));if(id==="list")renderList()}
-function setMode(m){mode=m;document.getElementById("modeBS").classList.toggle("primary",m==="bs");document.getElementById("modeZH").classList.toggle("primary",m==="zh");next()}
-function setPickMode(m){pickMode=m;sessionSeen=new Set();document.getElementById("pickWeighted").classList.toggle("primary",m==="weighted");document.getElementById("pickNoRepeat").classList.toggle("primary",m==="norepeat");next()}
-function setFilter(f){pickFilter=f;sessionSeen=new Set();["all","maybe","forgot"].forEach(x=>document.getElementById("filter"+x.charAt(0).toUpperCase()+x.slice(1)).classList.toggle("primary",f===x));next()}
+function setMode(m){mode=m;history=[];historyPos=-1;document.getElementById("modeBS").classList.toggle("primary",m==="bs");document.getElementById("modeZH").classList.toggle("primary",m==="zh");next()}
+function setPickMode(m){pickMode=m;sessionSeen=new Set();history=[];historyPos=-1;document.getElementById("pickWeighted").classList.toggle("primary",m==="weighted");document.getElementById("pickNoRepeat").classList.toggle("primary",m==="norepeat");next()}
+function setFilter(f){pickFilter=f;sessionSeen=new Set();history=[];historyPos=-1;["all","maybe","forgot"].forEach(x=>document.getElementById("filter"+x.charAt(0).toUpperCase()+x.slice(1)).classList.toggle("primary",f===x));next()}
 function eligible(){return words.map((w,i)=>({w,i})).filter(x=>{
   const w=x.w;
   if(pickFilter==="maybe") return (w.maybe||0)>0;
@@ -165,23 +175,101 @@ function weightedPick(){
   });
   let r=Math.random()*total;for(const x of pool){r-=x.weight;if(r<=0)return words[x.i];}return words[pool[pool.length-1].i];
 }
+function setCurrent(w, addHistory=true){
+  current=w||null;
+  answerShown=false;
+  document.getElementById("ratingActions").classList.add("hidden");
+  if(!current){
+    document.getElementById("question").textContent="没有符合条件的单词";
+    document.getElementById("answer").classList.add("hidden");
+    document.getElementById("answer").innerHTML="";
+    updateStats();
+    return;
+  }
+  document.getElementById("question").textContent=mode==="bs"?current.bs:current.zh;
+  document.getElementById("answer").classList.add("hidden");
+  document.getElementById("answer").innerHTML="";
+  if(addHistory){
+    if(historyPos < history.length-1) history=history.slice(0,historyPos+1);
+    history.push(current);
+    historyPos=history.length-1;
+  }
+  updateStats();
+}
+
 function next(){
   if(pickMode==="norepeat"){
     let arr=eligible();
-    if(!arr.length){current=null;document.getElementById("question").textContent="本轮已经全部抽完 🎉";document.getElementById("answer").classList.add("hidden");updateStats();return;}
-    let x=arr[Math.floor(Math.random()*arr.length)];current=x.w;sessionSeen.add(x.i);
-  }else current=weightedPick();
-  if(!current){document.getElementById("question").textContent="没有符合条件的单词";document.getElementById("answer").classList.add("hidden");updateStats();return;}
-  document.getElementById("question").textContent=mode==="bs"?current.bs:current.zh;document.getElementById("answer").classList.add("hidden");document.getElementById("answer").innerHTML="";updateStats();
+    if(!arr.length){
+      current=null;
+      document.getElementById("question").textContent="本轮已经全部抽完 🎉";
+      document.getElementById("answer").classList.add("hidden");
+      document.getElementById("ratingActions").classList.add("hidden");
+      updateStats();
+      return;
+    }
+    let x=arr[Math.floor(Math.random()*arr.length)];
+    sessionSeen.add(x.i);
+    setCurrent(x.w,true);
+  }else{
+    setCurrent(weightedPick(),true);
+  }
 }
-function reveal(){if(!current)return;document.getElementById("answer").innerHTML=mode==="bs"?`中文：${esc(current.zh)}<br>谐音：${esc(current.py||"未填写")}`:`波斯尼亚语：${esc(current.bs)}<br>谐音：${esc(current.py||"未填写")}`;document.getElementById("answer").classList.remove("hidden")}
-function rate(type){if(!current)return;current[type]=(current[type]||0)+1;save();next();if(listFilter!=="all")renderList()}
+
+function prev(){
+  if(historyPos<=0)return;
+  historyPos--;
+  setCurrent(history[historyPos],false);
+}
+function reveal(){
+  if(!current)return;
+  document.getElementById("answer").innerHTML=mode==="bs"
+    ?`中文：${esc(current.zh)}<br>谐音：${esc(current.py||"未填写")}`
+    :`波斯尼亚语：${esc(current.bs)}<br>谐音：${esc(current.py||"未填写")}`;
+  document.getElementById("answer").classList.remove("hidden");
+  answerShown=true;
+  document.getElementById("ratingActions").classList.remove("hidden");
+}
+function rate(type){
+  if(!current || !answerShown)return;
+  current[type]=(current[type]||0)+1;
+  save();
+  if(listFilter!=="all")renderList();
+  next();
+}
 function updateStats(){
   let total=words.length, filtered=words.filter(w=>pickFilter==="all"?true:pickFilter==="maybe"?(w.maybe||0)>0:(w.forgot||0)>0).length;
   let seen=pickMode==="norepeat"?sessionSeen.size:0;
   document.getElementById("pickStats").textContent=pickMode==="norepeat"?`总数：${filtered}　已随机单词：${seen}　剩余：${Math.max(0,filtered-seen)}`:`词库总数：${total}　当前范围：${filtered} 个词`;
   if(current)document.getElementById("stats").textContent=`当前词记录：记住 ${current.known||0} / 有印象 ${current.maybe||0} / 忘记 ${current.forgot||0}`;
 }
+function deleteAll(){
+  if(!words.length)return alert("词库已经是空的");
+  if(!confirm(`确定删除全部 ${words.length} 个单词吗？此操作无法恢复！\n建议先导出CSV备份。`))return;
+  words=[]; sessionSeen=new Set(); history=[]; historyPos=-1; current=null; save(); renderList(); next();
+}
+
+function deleteByFilter(){
+  let label={all:"全部",maybe:"有印象",forgot:"忘记",known:"记住"}[listFilter];
+  let matched=words.filter(w=>listFilter==="all"?true:listFilter==="known"?(w.known||0)>0:listFilter==="maybe"?(w.maybe||0)>0:(w.forgot||0)>0);
+  if(!matched.length)return alert(`“${label}”没有单词可删除`);
+  if(!confirm(`确定删除“${label}”中的 ${matched.length} 个单词吗？此操作无法恢复！`))return;
+  const set=new Set(matched);
+  words=words.filter(w=>!set.has(w));
+  sessionSeen=new Set(); history=[]; historyPos=-1; current=null; save(); renderList(); next();
+}
+
+function deleteSearch(){
+  let q=(document.getElementById("search").value||"").trim().toLowerCase();
+  if(!q)return alert("请先输入搜索内容");
+  let matched=words.filter(w=>(w.zh+w.bs+(w.py||"")).toLowerCase().includes(q));
+  if(!matched.length)return alert("没有找到符合搜索的单词");
+  if(!confirm(`确定删除搜索结果中的 ${matched.length} 个单词吗？此操作无法恢复！`))return;
+  const set=new Set(matched);
+  words=words.filter(w=>!set.has(w));
+  sessionSeen=new Set(); history=[]; historyPos=-1; current=null; save(); renderList(); next();
+}
+
 function resetStats(){if(!confirm("确定重置所有单词的记忆记录吗？"))return;words.forEach(w=>{w.known=w.maybe=w.forgot=0});sessionSeen=new Set();save();updateStats();renderList()}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
 function setListFilter(f){listFilter=f;["all","maybe","forgot","known"].forEach(x=>{let el=document.getElementById("list"+x.charAt(0).toUpperCase()+x.slice(1));if(el)el.classList.toggle("primary",f===x)});renderList()}
